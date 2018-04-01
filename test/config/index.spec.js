@@ -1,9 +1,9 @@
+const path = require('path');
 const argv = require('../_fixtures/config/argv');
 const defaultConfig = require('../../lib/config/defaults').getConfig();
 
 describe('config/index', () => {
   describe('.parseConfigs(env, defaultArgv)', () => {
-    let configParser;
     let defaultArgv;
     let ghGot;
     let get;
@@ -11,7 +11,7 @@ describe('config/index', () => {
     let vstsHelper;
     beforeEach(() => {
       jest.resetModules();
-      configParser = require('../../lib/config/index.js');
+      jest.resetAllMocks();
       defaultArgv = argv();
       jest.mock('gh-got');
       ghGot = require('gh-got');
@@ -27,6 +27,7 @@ describe('config/index', () => {
       defaultArgv.push('--platform=foo');
       let err;
       try {
+        const configParser = require('../../lib/config');
         await configParser.parseConfigs(env, defaultArgv);
       } catch (e) {
         err = e;
@@ -37,6 +38,7 @@ describe('config/index', () => {
       const env = {};
       let err;
       try {
+        const configParser = require('../../lib/config');
         await configParser.parseConfigs(env, defaultArgv);
       } catch (e) {
         err = e;
@@ -47,6 +49,7 @@ describe('config/index', () => {
       const env = { RENOVATE_PLATFORM: 'gitlab' };
       let err;
       try {
+        const configParser = require('../../lib/config');
         await configParser.parseConfigs(env, defaultArgv);
       } catch (e) {
         err = e;
@@ -57,6 +60,7 @@ describe('config/index', () => {
       const env = { RENOVATE_PLATFORM: 'vsts' };
       let err;
       try {
+        const configParser = require('../../lib/config');
         await configParser.parseConfigs(env, defaultArgv);
       } catch (e) {
         err = e;
@@ -65,17 +69,21 @@ describe('config/index', () => {
     });
     it('supports token in env', async () => {
       const env = { GITHUB_TOKEN: 'abc' };
+
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
     });
     it('supports token in CLI options', async () => {
       defaultArgv = defaultArgv.concat(['--token=abc']);
       const env = {};
+
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
     });
     it('autodiscovers github platform', async () => {
       const env = {};
       defaultArgv = defaultArgv.concat(['--autodiscover', '--token=abc']);
-      ghGot.mockImplementationOnce(() => ({
+      ghGot.mockImplementation(() => ({
         headers: {},
         body: [
           {
@@ -86,17 +94,18 @@ describe('config/index', () => {
           },
         ],
       }));
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
       expect(ghGot.mock.calls.length).toBe(1);
       expect(get.mock.calls.length).toBe(0);
     });
     it('autodiscovers gitlab platform', async () => {
       const env = {};
-      defaultArgv = defaultArgv.concat([
+      defaultArgv = defaultArgv.concat(
         '--autodiscover',
         '--platform=gitlab',
-        '--token=abc',
-      ]);
+        '--token=abc'
+      );
       get.mockImplementationOnce(() => ({
         headers: {},
         body: [
@@ -105,6 +114,8 @@ describe('config/index', () => {
           },
         ],
       }));
+
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
       expect(ghGot.mock.calls.length).toBe(0);
       expect(get.mock.calls.length).toBe(1);
@@ -137,6 +148,8 @@ describe('config/index', () => {
         project: 'prj1',
         repo: 'repo1',
       }));
+
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
       expect(ghGot.mock.calls.length).toBe(0);
       expect(get.mock.calls.length).toBe(0);
@@ -149,6 +162,8 @@ describe('config/index', () => {
         headers: {},
         body: [],
       }));
+
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
       expect(ghGot.mock.calls.length).toBe(1);
       expect(get.mock.calls.length).toBe(0);
@@ -160,9 +175,32 @@ describe('config/index', () => {
         headers: {},
         body: [],
       }));
+
+      const configParser = require('../../lib/config');
       await configParser.parseConfigs(env, defaultArgv);
       expect(ghGot.mock.calls.length).toBe(1);
       expect(get.mock.calls.length).toBe(0);
+    });
+    it('resolves all presets', async () => {
+      defaultArgv = defaultArgv.concat(['--extends=":prHourlyLimit4"']);
+
+      const env = {
+        RENOVATE_CONFIG_FILE: path.resolve(
+          __dirname,
+          '../_fixtures/config/file-with-repo-presets.js'
+        ),
+      };
+
+      const configParser = require('../../lib/config');
+      const actual = await configParser.parseConfigs(env, defaultArgv);
+
+      expect(actual.prHourlyLimit).toBe(4);
+
+      actual.repositories.forEach(repo => {
+        if (typeof repo === 'object') {
+          expect(repo).toMatchSnapshot(repo.repository);
+        }
+      });
     });
   });
   describe('mergeChildConfig(parentConfig, childConfig)', () => {
@@ -175,7 +213,7 @@ describe('config/index', () => {
           schedule: ['on monday'],
         },
       };
-      const configParser = require('../../lib/config/index.js');
+      const configParser = require('../../lib/config');
       const config = configParser.mergeChildConfig(parentConfig, childConfig);
       expect(config.foo).toEqual('bar');
       expect(config.pinVersions).toBe(false);
@@ -189,7 +227,7 @@ describe('config/index', () => {
         devDependencies: { foo: 1 },
         peerDependencies: {},
       };
-      const configParser = require('../../lib/config/index.js');
+      const configParser = require('../../lib/config');
       const config = configParser.mergeChildConfig(parentConfig, childConfig);
       expect(config.depTypes).toMatchSnapshot();
     });
@@ -201,7 +239,7 @@ describe('config/index', () => {
       const childConfig = {
         packageRules: [{ a: 3 }, { a: 4 }],
       };
-      const configParser = require('../../lib/config/index.js');
+      const configParser = require('../../lib/config');
       const config = configParser.mergeChildConfig(parentConfig, childConfig);
       expect(config.packageRules.map(rule => rule.a)).toMatchObject([
         1,
@@ -218,20 +256,20 @@ describe('config/index', () => {
       const childConfig = {
         packageRules: [{ a: 3 }, { a: 4 }],
       };
-      const configParser = require('../../lib/config/index.js');
+      const configParser = require('../../lib/config');
       const config = configParser.mergeChildConfig(parentConfig, childConfig);
       expect(config.packageRules).toHaveLength(2);
     });
     it('handles null child packageRules', () => {
       const parentConfig = { ...defaultConfig };
       parentConfig.packageRules = [{ a: 3 }, { a: 4 }];
-      const configParser = require('../../lib/config/index.js');
+      const configParser = require('../../lib/config');
       const config = configParser.mergeChildConfig(parentConfig, {});
       expect(config.packageRules).toHaveLength(2);
     });
     it('handles undefined childConfig', () => {
       const parentConfig = { ...defaultConfig };
-      const configParser = require('../../lib/config/index.js');
+      const configParser = require('../../lib/config');
       const config = configParser.mergeChildConfig(parentConfig, undefined);
       expect(config).toMatchObject(parentConfig);
     });
